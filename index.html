@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 지진 지구본</title>
+    <style>
+        html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; color: #fff; }
+        #globe { width: 100%; height: 100%; }
+        #panel { position: absolute; top: 12px; left: 12px; padding: 10px 14px; background: rgba(0,0,0,.55); border-radius: 8px; font-size: 14px; line-height: 1.6; pointer-events: none; }
+        #panel b { font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div id="globe"></div>
+    <div id="panel">불러오는 중...</div>
+
+    <script src="https://unpkg.com/globe.gl@2.33.1/dist/globe.gl.min.js"></script>
+    <script>
+        // 출처: USGS 지진 정보 (key 불필요), 최근 24시간
+        const URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson"
+
+        const color = (mag) => mag >= 6 ? "#ff2d2d" : mag >= 4.5 ? "#ff9f1a" : "#ffe14d"
+
+        const globe = Globe()(document.getElementById("globe"))
+            .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-night.jpg")
+            .bumpImageUrl("https://unpkg.com/three-globe/example/img/earth-topology.png")
+            .backgroundImageUrl("https://unpkg.com/three-globe/example/img/night-sky.png")
+            .pointLat("lat").pointLng("lng")
+            .pointColor((q) => color(q.mag))
+            .pointAltitude((q) => Math.max(q.mag, 0.5) * 0.03)
+            .pointRadius((q) => Math.max(q.mag, 0.5) * 0.12)
+            .pointLabel((q) => `<b>M${q.mag}</b> ${q.place}<br>${new Date(q.time).toLocaleString("ko-KR")}`)
+            .ringLat("lat").ringLng("lng")
+            .ringColor((q) => () => color(q.mag))
+            .ringMaxRadius((q) => q.mag * 1.5)
+            .ringPropagationSpeed(3)
+            .ringRepeatPeriod(1200)
+        globe.controls().autoRotate = true
+        globe.controls().autoRotateSpeed = 0.5
+
+        const load = async () => {
+            const panel = document.getElementById("panel")
+            try {
+                const json = await (await fetch(URL)).json()
+                const quakes = json.features
+                    .filter((f) => f.properties.mag !== null)
+                    .map((f) => ({
+                        lng: f.geometry.coordinates[0],
+                        lat: f.geometry.coordinates[1],
+                        mag: f.properties.mag,
+                        place: f.properties.place,
+                        time: f.properties.time,
+                    }))
+                globe.pointsData(quakes)
+                globe.ringsData(quakes.filter((q) => q.mag >= 4))
+
+                const top = quakes.reduce((a, b) => (b.mag > a.mag ? b : a), quakes[0])
+                panel.innerHTML = `<b>최근 24시간 지진 ${quakes.length}건</b><br>` +
+                    `최대 규모 M${top.mag} — ${top.place}<br>` +
+                    `<span style="color:#ffe14d">●</span> 4.5 미만 ` +
+                    `<span style="color:#ff9f1a">●</span> 4.5~6 ` +
+                    `<span style="color:#ff2d2d">●</span> 6 이상<br>` +
+                    `<small>출처: USGS · 1분마다 갱신</small>`
+            } catch (e) {
+                panel.textContent = "지진 데이터를 가져오지 못했어요"
+            }
+        }
+
+        load()
+        setInterval(load, 60000)
+    </script>
+</body>
+</html>
